@@ -9,7 +9,7 @@ typedef void* (*process_layer_t)(void* parser_result, void* base_parser, void* d
 
 
 int should_hook = 0;
-void* libhttp_baseaddr = NULL;
+void* lib_baseaddr = NULL;
 int done_hooking = 0;
 void* horizon_baseaddr = NULL;
 int did_hook_happened = 0;
@@ -20,7 +20,7 @@ data_buffer_constructor_t data_buffer_construct_ptr;
 #define HUYINADARABUSH 0x7fdbc000
 #define HORIZON_PATH "/opt/horizon/bin/horizon.afl"
 #define CALL_PROCESS_HOOK_OFFSET (0xdf2a0) // TODO: verify
-#define LIBHTTP_PATH "/opt/horizon/lib/horizon/http/libhttp.so"
+//#define LIBHTTP_PATH "/opt/horizon/lib/horizon/http/libhttp.so"
 
 
 data_buffer_t* create_data_buffer(unsigned char* buffer, unsigned int len)
@@ -57,20 +57,33 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     long length;
 
 
-     int ret_val = 0;
+    int ret_val = 0;
     create_parser_t create_parser_addr = NULL;
 
-    void* real_libhttp_handle = dlopen(LIBHTTP_PATH, RTLD_NOW);
+    const char *target_fuzzee = getenv("__TARGET_FUZZEE");
+    const char *target_path = getenv("__TARGET_FUZZEE_PATH");
+    const char *target_symbol = getenv("__TARGET_SYMBOL");
 
-    if (real_libhttp_handle == NULL) {
+    if(!target_fuzzee || !target_symbol || !target_path) { 
+        printf("Failed to get environment variables target_fuzzee: %s, target_symbol: %s target_path: %s\n", target_fuzzee, target_symbol, target_path);
+        ret_val = -1;
+        exit(ret_val);
+    }
+
+    void* real_lib_handle = dlopen(target_path, RTLD_NOW);
+
+    if (real_lib_handle == NULL) {
         printf("Failed to get libhttp.so handle\n");
         ret_val = -1;
         exit(ret_val);
     }
 
-    printf("handle pointer %p\n", real_libhttp_handle);
+
+
+
+    printf("lib handle pointer %p\n", real_lib_handle);
     fflush(NULL); //TODO: remove
-    create_parser_addr = dlsym(real_libhttp_handle, "create_parser");
+    create_parser_addr = dlsym(real_lib_handle, "create_parser");
 
     if (create_parser_addr == NULL) {
         printf("Failed to get create_parser address\n");
@@ -93,13 +106,13 @@ int prepare_fuzzer(void* res, void* dissection_context) {
         exit(ret_val);
     }
 
-    libhttp_baseaddr = get_lib_addr("libhttp");
-    printf("libhttp_baseaddress %p\n", libhttp_baseaddr);
+    lib_baseaddr = get_lib_addr((char *)target_fuzzee);
+    printf("lib_baseaddress %p\n", lib_baseaddr);
     fflush(NULL); //TODO: remove
-    handle_t* libhttp_handle = create_module_handle(libhttp_baseaddr, LIBHTTP_PATH);
+    handle_t* lib_handle = create_module_handle(lib_baseaddr, (char *)target_path);
 
-    if (libhttp_handle == NULL) {
-        printf("libhttp_handle is NULL \n");
+    if (lib_handle == NULL) {
+        printf("lib_handle is NULL \n");
         ret_val = -1;
         exit(ret_val);
     }
@@ -109,7 +122,7 @@ int prepare_fuzzer(void* res, void* dissection_context) {
 
 
 
-    process_layer_t process_layer_ptr = (process_layer_t)lookup_symbol(libhttp_handle, "_ZN12_GLOBAL__N_110HTTPParser12processLayerERN7horizon8protocol10management16IProcessingUtilsERNS1_7general11IDataBufferE");
+    process_layer_t process_layer_ptr = (process_layer_t)lookup_symbol(lib_handle, target_symbol);
 
     void* parser_result = malloc(100);
 
@@ -138,8 +151,8 @@ int prepare_fuzzer(void* res, void* dissection_context) {
         process_layer_ptr(parser_result, *create_parser_obj, dissection_context, buffer);
     }
     
-    puts("ABABABABABABABAAB\n");
-    fflush(NULL); //TODO: remove
+    // puts("ABABABABABABABAAB\n");
+    // fflush(NULL); //TODO: remove
     _exit(0);
 }
 
