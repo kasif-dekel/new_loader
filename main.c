@@ -118,10 +118,10 @@ int prepare_fuzzer(void* res, void* dissection_context) {
   
 
 
-
+    __afl_map_shm();
     __afl_start_forkserver();
 
-    FILE * f = fopen ("/tmp/a.txt", "rb");
+    FILE * f = fopen("/tmp/fuzzfile.txt", "rb");
     if (f) {
     fseek (f, 0, SEEK_END);
     length = ftell (f);
