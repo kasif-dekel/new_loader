@@ -63,9 +63,10 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     const char *target_fuzzee = getenv("__TARGET_FUZZEE");
     const char *target_path = getenv("__TARGET_FUZZEE_PATH");
     const char *target_symbol = getenv("__TARGET_SYMBOL");
+    const char *fuzzfile = getenv("__FUZZFILE");
 
-    if(!target_fuzzee || !target_symbol || !target_path) { 
-        printf("Failed to get environment variables target_fuzzee: %s, target_symbol: %s target_path: %s\n", target_fuzzee, target_symbol, target_path);
+    if(!target_fuzzee || !target_symbol || !target_path || !fuzzfile) { 
+        printf("Failed to get environment variables target_fuzzee: %s, target_symbol: %s target_path: %s fuzzfile: %s\n", target_fuzzee, target_symbol, target_path, fuzzfile);
         ret_val = -1;
         exit(ret_val);
     }
@@ -134,7 +135,7 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     __afl_map_shm();
     __afl_start_forkserver();
 
-    FILE * f = fopen("/tmp/fuzzfile.txt", "rb");
+    FILE * f = fopen(fuzzfile, "rb");
     if (f) {
     fseek (f, 0, SEEK_END);
     length = ftell (f);
