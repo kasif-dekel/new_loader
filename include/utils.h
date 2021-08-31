@@ -8,7 +8,6 @@
 #include <errno.h>
 #include <stdint.h>
 #include <sys/mman.h>
-#include <unistd.h>
 #include <sys/shm.h>
 #include <stdarg.h>
 #include <sys/types.h>
@@ -34,7 +33,7 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <stdarg.h>
-
+#include <poll.h>
 
 #define FORKSRV_FD  198
 #define AREA_BASE   ((uint8_t *)0x200000)

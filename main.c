@@ -13,6 +13,7 @@ void* lib_baseaddr = NULL;
 int done_hooking = 0;
 void* horizon_baseaddr = NULL;
 int did_hook_happened = 0;
+int should_end_poll = 0;
 
 data_buffer_constructor_t data_buffer_construct_ptr;
 
@@ -130,7 +131,8 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     puts("hello from prepare_fuzzer\r\n");
     fflush(NULL); //TODO: remove
   
-
+    should_end_poll = 1;
+    sleep(1);
 
     __afl_map_shm();
     __afl_start_forkserver();
@@ -201,7 +203,27 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     
 }
 
+void (*srand_orig)(unsigned int seed);
 
+
+void srand(unsigned int seed) { 
+    if(!srand_orig) 
+        srand_orig = dlsym(RTLD_NEXT, "srand");
+    srand_orig(1);
+}
+
+int (*poll_orig)(struct pollfd *fds, nfds_t nfds, int timeout);
+
+
+int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
+    if(!poll_orig) 
+        poll_orig = dlsym(RTLD_NEXT, "poll");
+    if(should_end_poll) { 
+        pause();
+    }
+
+    return poll_orig(fds, nfds, timeout);
+}
 
 __attribute__((constructor)) int run() {
     puts("hello from run\r\n");
