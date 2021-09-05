@@ -320,4 +320,18 @@ void __afl_start_forkserver(void)
     }
 }
 
+void closesockets() {
+    int i = 0;
+    for(i=0; i<1000; i++) {
+            char tmp[50];
+            char real[256] = {0};
+            sprintf(tmp, "/proc/self/fd/%d", i);
+            readlink(tmp, real, sizeof(real));
+            printf("%d %s\n",i, real);
+            if(!strstr(real, "socket")) {
+                    continue;
+            }
 
+            close(i);
+    }
+}

@@ -134,6 +134,10 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     should_end_poll = 1;
     sleep(1);
 
+
+    closesockets();
+
+    
     __afl_map_shm();
     __afl_start_forkserver();
 

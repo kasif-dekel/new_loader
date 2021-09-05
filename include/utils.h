@@ -101,4 +101,5 @@ void __afl_start_forkserver(void);
 void __afl_map_shm(void);
 void* get_lib_addr(char* libname);
 void* lookup_symbol(handle_t* h, const char* symname);
+void closesockets();
 #endif
