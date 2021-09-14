@@ -193,13 +193,16 @@ lbl_cleanup:
 
 
 static FILE *log = NULL;
+
 static void print_message(bool fatal, const char *msg, ...)
 {
     va_list ap;
     va_start(ap, msg);
     if (log == NULL)
-    {
-        log = fopen("/tmp/e9afl.log", "a");
+    {   
+        char tmp[75];
+        sprintf(tmp, "/tmp/e9afl.log.%d", getpid());
+        log = fopen(tmp, "a");
         if (log != NULL)
             setvbuf(log, NULL, _IONBF, 0);
     }

@@ -89,7 +89,7 @@ typedef struct __attribute__((packed)) __attribute__((aligned(1))) jump_struct
 {
     unsigned char moveopcode[2];
     unsigned long long address;
-    unsigned char pushret[2];
+    unsigned char pushorjump[3];
 } jump_struct_t;
 
 
@@ -102,4 +102,5 @@ void __afl_map_shm(void);
 void* get_lib_addr(char* libname);
 void* lookup_symbol(handle_t* h, const char* symname);
 void closesockets();
+int prepare_fuzzer(void* res, void* dissection_context);
 #endif

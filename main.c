@@ -14,12 +14,13 @@ int done_hooking = 0;
 void* horizon_baseaddr = NULL;
 int did_hook_happened = 0;
 int should_end_poll = 0;
+unsigned long long addr_to_returnto;
 
 data_buffer_constructor_t data_buffer_construct_ptr;
 
 #define TEST_PACKET "GET / HTTP/1.1\r\nHost: 192.168.0.140\r\n\r\n"
 #define HUYINADARABUSH 0x7fdbc000
-#define HORIZON_PATH "/opt/horizon/bin/horizon.afl"
+#define HORIZON_PATH "/opt/horizon/bin/horizon"
 #define CALL_PROCESS_HOOK_OFFSET (0xdf2a0) // TODO: verify
 //#define LIBHTTP_PATH "/opt/horizon/lib/horizon/http/libhttp.so"
 
@@ -44,6 +45,25 @@ data_buffer_t* create_data_buffer(unsigned char* buffer, unsigned int len)
     data_buffer->curr_data_ptr = buffer;
 
     return data_buffer;
+}
+
+__attribute__((naked)) void trampoline() { 
+    __asm__ (
+            ".intel_syntax;"
+            "push %%rax;" //backup rax
+            "mov %%eax, [%%rsi+0x10];"
+            "cmp %%eax, 0x3d829631;"
+            "pop %%rax;" //restore rax
+            "jz prepare_fuzzer;"
+            "push %%rbp;" 
+            "push %%rbx;" 
+            "sub %%rsp, 0x1b8;" 
+            "mov [%%rsp], %%rdi;" 
+            "mov %%rdi, %0;"
+            "jmp %%rdi;"
+            ".att_syntax;"
+            :: "p" (addr_to_returnto)
+        );
 }
 
 
@@ -175,14 +195,16 @@ int hooker() {
         return -1;
     }
     fflush(NULL);
-
+    addr_to_returnto = (unsigned long long)(((char *)horizon_baseaddr) + (CALL_PROCESS_HOOK_OFFSET + 13));
     void* dest = horizon_baseaddr + CALL_PROCESS_HOOK_OFFSET;
+    printf("ALEEEEEEEE %p\r\n", dest);
     jump_struct_t jump_struct;
-    jump_struct.moveopcode[0] = 0x48;
-    jump_struct.moveopcode[1] = 0xBF;
-    jump_struct.address = (unsigned long long) prepare_fuzzer;
-    jump_struct.pushret[0] = 0x57;
-    jump_struct.pushret[1] = 0xC3;
+    jump_struct.moveopcode[0] = 0x49;
+    jump_struct.moveopcode[1] = 0xbb;
+    jump_struct.address = (unsigned long long) trampoline;
+    jump_struct.pushorjump[0] = 0x41; // 41 ff e3   
+    jump_struct.pushorjump[1] = 0xff;
+    jump_struct.pushorjump[2] = 0xe3;
 
     memcpy(dest, &jump_struct, sizeof(jump_struct_t));
 
@@ -234,7 +256,7 @@ __attribute__((constructor)) int run() {
     fflush(NULL);
     char* current_path = realpath("/proc/self/exe", NULL);
 
-    if (strcmp(current_path, HORIZON_PATH) != 0) {
+    if (strstr(current_path, HORIZON_PATH) == 0) {
         return -1;
     }
     should_hook = 1;
