@@ -1,12 +1,8 @@
 #include "./include/utils.h"
 
-
-
-
 typedef void* (*create_parser_t)(void*);
 typedef data_buffer_t* (*data_buffer_constructor_t)(data_buffer_t*);
 typedef void* (*process_layer_t)(void* parser_result, void* base_parser, void* dissection_context, data_buffer_t* data_buffer);
-
 
 int should_hook = 0;
 void* lib_baseaddr = NULL;
@@ -18,11 +14,10 @@ unsigned long long addr_to_returnto;
 
 data_buffer_constructor_t data_buffer_construct_ptr;
 
-#define TEST_PACKET "GET / HTTP/1.1\r\nHost: 192.168.0.140\r\n\r\n"
 #define HUYINADARABUSH 0x7fdbc000
 #define HORIZON_PATH "/opt/horizon/bin/horizon"
 #define CALL_PROCESS_HOOK_OFFSET (0xdf2a0) // TODO: verify
-//#define LIBHTTP_PATH "/opt/horizon/lib/horizon/http/libhttp.so"
+#define UDP_TRAFFIC_PATH "/tmp/fuzzer/traffic2.pcap"
 
 
 data_buffer_t* create_data_buffer(unsigned char* buffer, unsigned int len)
@@ -47,46 +42,52 @@ data_buffer_t* create_data_buffer(unsigned char* buffer, unsigned int len)
     return data_buffer;
 }
 
-__attribute__((naked)) void trampoline() { 
-    __asm__ (
-            ".intel_syntax;"
-            "push %%rax;" //backup rax
-            "mov %%eax, [%%rsi+0x10];"
-            "cmp %%eax, 0x3d829631;"
-            "pop %%rax;" //restore rax
-            "jz prepare_fuzzer;"
-            "push %%rbp;" 
-            "push %%rbx;" 
-            "sub %%rsp, 0x1b8;" 
-            "mov [%%rsp], %%rdi;" 
-            "mov %%rdi, %0;"
-            "jmp %%rdi;"
-            ".att_syntax;"
-            :: "p" (addr_to_returnto)
-        );
+__attribute__((naked)) void trampoline()
+{
+    __asm__(
+        ".intel_syntax;"
+        "push %%rax;" //backup rax
+        "mov %%eax, [%%rsi+0x10];"
+#ifdef IS_UDP
+        "cmp %%eax, 0xe23ff64c;" // DNS CONST
+#else
+        "cmp %%eax, 0x3d829631;" // HTTP CONST
+#endif
+        "pop %%rax;" //restore rax
+        "jz prepare_fuzzer;"
+        "push %%rbp;"
+        "push %%rbx;"
+        "sub %%rsp, 0x1b8;"
+        "mov [%%rsp], %%rdi;"
+        "mov %%rdi, %0;"
+        "jmp %%rdi;"
+        ".att_syntax;"
+        :: "p" (addr_to_returnto)
+    );
 }
 
 
-int prepare_fuzzer(void* res, void* dissection_context) {
-    if(did_hook_happened) { 
-        while(true) { 
+int prepare_fuzzer(void* res, void* dissection_context)
+{
+    if (did_hook_happened) {
+        while (true) {
             sleep(1000);
         }
     }
     did_hook_happened = 1;
-    char *fuzzbuffer = 0;
+    char* fuzzbuffer = 0;
     long length;
 
 
     int ret_val = 0;
     create_parser_t create_parser_addr = NULL;
 
-    const char *target_fuzzee = getenv("__TARGET_FUZZEE");
-    const char *target_path = getenv("__TARGET_FUZZEE_PATH");
-    const char *target_symbol = getenv("__TARGET_SYMBOL");
-    const char *fuzzfile = getenv("__FUZZFILE");
+    const char* target_fuzzee = getenv("__TARGET_FUZZEE");
+    const char* target_path = getenv("__TARGET_FUZZEE_PATH");
+    const char* target_symbol = getenv("__TARGET_SYMBOL");
+    const char* fuzzfile = getenv("__FUZZFILE");
 
-    if(!target_fuzzee || !target_symbol || !target_path || !fuzzfile) { 
+    if (!target_fuzzee || !target_symbol || !target_path || !fuzzfile) {
         printf("Failed to get environment variables target_fuzzee: %s, target_symbol: %s target_path: %s fuzzfile: %s\n", target_fuzzee, target_symbol, target_path, fuzzfile);
         ret_val = -1;
         exit(ret_val);
@@ -95,13 +96,10 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     void* real_lib_handle = dlopen(target_path, RTLD_NOW);
 
     if (real_lib_handle == NULL) {
-        printf("Failed to get libhttp.so handle\n");
+        printf("Failed to get library handle\n");
         ret_val = -1;
         exit(ret_val);
     }
-
-
-
 
     printf("lib handle pointer %p\n", real_lib_handle);
     fflush(NULL); //TODO: remove
@@ -128,10 +126,10 @@ int prepare_fuzzer(void* res, void* dissection_context) {
         exit(ret_val);
     }
 
-    lib_baseaddr = get_lib_addr((char *)target_fuzzee);
+    lib_baseaddr = get_lib_addr((char*)target_fuzzee);
     printf("lib_baseaddress %p\n", lib_baseaddr);
     fflush(NULL); //TODO: remove
-    handle_t* lib_handle = create_module_handle(lib_baseaddr, (char *)target_path);
+    handle_t* lib_handle = create_module_handle(lib_baseaddr, (char*)target_path);
 
     if (lib_handle == NULL) {
         printf("lib_handle is NULL \n");
@@ -142,51 +140,47 @@ int prepare_fuzzer(void* res, void* dissection_context) {
     data_buffer_construct_ptr = lookup_symbol(horizon_handle, "_ZN7horizon7general10DataBufferC2Ev");
     printf("data_buffer_addr: %p\n", data_buffer_construct_ptr);
 
-
-
     process_layer_t process_layer_ptr = (process_layer_t)lookup_symbol(lib_handle, target_symbol);
-
     void* parser_result = malloc(100);
 
     puts("hello from prepare_fuzzer\r\n");
     fflush(NULL); //TODO: remove
-  
+
     should_end_poll = 1;
     sleep(1);
 
-
     closesockets();
 
-    
     __afl_map_shm();
     __afl_start_forkserver();
 
-    FILE * f = fopen(fuzzfile, "rb");
+    FILE* f = fopen(fuzzfile, "rb");
     if (f) {
-    fseek (f, 0, SEEK_END);
-    length = ftell (f);
-    fseek (f, 0, SEEK_SET);
-    fuzzbuffer = malloc(length);
-    if (fuzzbuffer) {
-        fread (fuzzbuffer, 1, length, f);
-    }
-    fclose (f);
+        fseek(f, 0, SEEK_END);
+        length = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        fuzzbuffer = malloc(length);
+        if (fuzzbuffer) {
+            fread(fuzzbuffer, 1, length, f);
+        }
+        fclose(f);
     }
 
     if (fuzzbuffer) {
         data_buffer_t* buffer = create_data_buffer((unsigned char*)fuzzbuffer, length);
         process_layer_ptr(parser_result, *create_parser_obj, dissection_context, buffer);
     }
-    
+
     // puts("ABABABABABABABAAB\n");
     // fflush(NULL); //TODO: remove
     _exit(0);
 }
 
 
-int hooker() { 
-    horizon_baseaddr = get_lib_addr("horizon.afl") + HUYINADARABUSH;
-    
+int hooker()
+{
+    horizon_baseaddr = get_lib_addr("horizon") + HUYINADARABUSH;
+
     printf("horizon_baseaddress %p aligned: %p offset: %x\n", horizon_baseaddr, horizon_baseaddr + (CALL_PROCESS_HOOK_OFFSET & 0xff000), (CALL_PROCESS_HOOK_OFFSET & 0xff000));
     int ret_val = mprotect(horizon_baseaddr + (CALL_PROCESS_HOOK_OFFSET & 0xff000), 0x1000, PROT_READ | PROT_WRITE | PROT_EXEC);
 
@@ -195,7 +189,7 @@ int hooker() {
         return -1;
     }
     fflush(NULL);
-    addr_to_returnto = (unsigned long long)(((char *)horizon_baseaddr) + (CALL_PROCESS_HOOK_OFFSET + 13));
+    addr_to_returnto = (unsigned long long)(((char*)horizon_baseaddr) + (CALL_PROCESS_HOOK_OFFSET + 13));
     void* dest = horizon_baseaddr + CALL_PROCESS_HOOK_OFFSET;
     printf("ALEEEEEEEE %p\r\n", dest);
     jump_struct_t jump_struct;
@@ -207,51 +201,58 @@ int hooker() {
     jump_struct.pushorjump[2] = 0xe3;
 
     memcpy(dest, &jump_struct, sizeof(jump_struct_t));
-
-    
     //returnhappend
 }
 
-int (*setsockopt_orig)(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
+#ifdef IS_UDP
+typedef void pcap_t;
 
+pcap_t* (*pcap_open_offline_orig)(const char* fname, char* errbuf);
+pcap_t* pcap_open_offline(const char* fname, char* errbuf)
+{
+    if (!pcap_open_offline_orig)
+        pcap_open_offline_orig = dlsym(RTLD_NEXT, "pcap_open_offline");
 
-int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) { 
-    if(!setsockopt_orig) setsockopt_orig = dlsym(RTLD_NEXT, "setsockopt");
-    if(done_hooking || !should_hook) { 
+    printf("PCAP FILE: %s\n", fname);
+    return pcap_open_offline_orig(UDP_TRAFFIC_PATH, errbuf);
+}
+#endif
+
+int (*setsockopt_orig)(int sockfd, int level, int optname, const void* optval, socklen_t optlen);
+int setsockopt(int sockfd, int level, int optname, const void* optval, socklen_t optlen)
+{
+    if (!setsockopt_orig) setsockopt_orig = dlsym(RTLD_NEXT, "setsockopt");
+    if (done_hooking || !should_hook) {
         return setsockopt_orig(sockfd, level, optname, optval, optlen);
     }
     done_hooking = 1;
     hooker();
 
-
-    
     return setsockopt_orig(sockfd, level, optname, optval, optlen);
-    
 }
 
 void (*srand_orig)(unsigned int seed);
-
-
-void srand(unsigned int seed) { 
-    if(!srand_orig) 
+void srand(unsigned int seed)
+{
+    if (!srand_orig)
         srand_orig = dlsym(RTLD_NEXT, "srand");
     srand_orig(1);
 }
 
-int (*poll_orig)(struct pollfd *fds, nfds_t nfds, int timeout);
-
-
-int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
-    if(!poll_orig) 
+int (*poll_orig)(struct pollfd* fds, nfds_t nfds, int timeout);
+int poll(struct pollfd* fds, nfds_t nfds, int timeout)
+{
+    if (!poll_orig)
         poll_orig = dlsym(RTLD_NEXT, "poll");
-    if(should_end_poll) { 
+    if (should_end_poll) {
         pause();
     }
 
     return poll_orig(fds, nfds, timeout);
 }
 
-__attribute__((constructor)) int run() {
+__attribute__((constructor)) int run()
+{
     puts("hello from run\r\n");
     fflush(NULL);
     char* current_path = realpath("/proc/self/exe", NULL);
@@ -259,9 +260,8 @@ __attribute__((constructor)) int run() {
     if (strstr(current_path, HORIZON_PATH) == 0) {
         return -1;
     }
-    should_hook = 1;
-    
 
+    should_hook = 1;
     return 0;
 }
 
