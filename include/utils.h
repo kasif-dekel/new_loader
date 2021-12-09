@@ -46,13 +46,12 @@
 
 static void print_message(bool fatal, const char *msg, ...);
 #define error(msg, ...)                                             \
-    print_message(true, "e9afl runtime error: " msg "\n", ## __VA_ARGS__) //TODO: remove
+    print_message(true, "e9afl runtime error: " msg "\n", ## __VA_ARGS__)
 #define log(msg, ...)                                               \
     print_message(false, "e9afl log: " msg "\n", ## __VA_ARGS__)
 
 
-typedef struct handle
-{
+typedef struct handle {
     Elf64_Ehdr* ehdr;
     Elf64_Phdr* phdr;
     Elf64_Shdr* shdr;
@@ -62,8 +61,7 @@ typedef struct handle
 
 
 
-typedef struct __attribute__((packed)) __attribute__((aligned(4))) data_buffer
-{
+typedef struct __attribute__((packed)) __attribute__((aligned(4))) data_buffer {
     void* _vftbl;
     unsigned long long field_8;
     unsigned long long field_10;
@@ -85,8 +83,7 @@ typedef struct __attribute__((packed)) __attribute__((aligned(4))) data_buffer
 
 
 
-typedef struct __attribute__((packed)) __attribute__((aligned(1))) jump_struct
-{
+typedef struct __attribute__((packed)) __attribute__((aligned(1))) jump_struct {
     unsigned char moveopcode[2];
     unsigned long long address;
     unsigned char pushorjump[3];
